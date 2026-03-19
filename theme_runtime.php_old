@@ -1,0 +1,183 @@
+<?php
+// includes/theme_runtime.php
+// Outputs CSS variables + global product card rules (Flatsome-like theme options)
+
+if (!isset($conn) || !($conn instanceof mysqli)) { return; }
+
+require_once __DIR__ . '/theme_options.php';
+$opt = gb_get_theme_options($conn);
+
+// Font families (local-safe). If you want Google Fonts, I’ll add a safe loader.
+$fontMap = [
+  "system" => "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif",
+  "inter"  => "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif",
+  "roboto" => "Roboto,-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif",
+  "poppins"=> "Poppins,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif",
+];
+
+$font = $fontMap[$opt['font_family']] ?? $fontMap["system"];
+
+$ratio = $opt['card_image_ratio'] ?? '1:1';
+$ratioCss = "1 / 1";
+if ($ratio === "4:3") $ratioCss = "4 / 3";
+if ($ratio === "16:9") $ratioCss = "16 / 9";
+
+$cardStyle = $opt['card_style'] ?? "shadow";
+$cardShadow = $cardStyle === "shadow" ? "0 10px 26px rgba(0,0,0,.08)" : "none";
+$cardBorder = $cardStyle === "border" ? "1px solid rgba(0,0,0,.08)" : "1px solid rgba(0,0,0,.06)";
+if ($cardStyle === "flat") $cardBorder = "1px solid transparent";
+
+$btnStyle = $opt['btn_style'] ?? "pill";
+$btnRadius = "999px";
+if ($btnStyle === "rounded") $btnRadius = "14px";
+if ($btnStyle === "square") $btnRadius = "8px";
+
+$spacing = $opt['spacing'] ?? "normal";
+$pad = "12px";
+$gap = "12px";
+if ($spacing === "compact") { $pad="10px"; $gap="10px"; }
+if ($spacing === "spacious") { $pad="14px"; $gap="14px"; }
+
+// grid columns
+$gd = max(1, min(6, (int)$opt['product_grid_desktop']));
+$gt = max(1, min(4, (int)$opt['product_grid_tablet']));
+$gm = max(1, min(3, (int)$opt['product_grid_mobile']));
+
+$container = max(980, min(1600, (int)$opt['container_width']));
+?>
+<style id="gb-theme-runtime">
+:root{
+  --gb-font: <?php echo $font; ?>;
+  --gb-font-size: <?php echo (int)$opt['base_font_size']; ?>px;
+
+  --gb-primary: <?php echo htmlspecialchars($opt['primary_color']); ?>;
+  --gb-accent: <?php echo htmlspecialchars($opt['accent_color']); ?>;
+  --gb-muted: <?php echo htmlspecialchars($opt['muted_color']); ?>;
+  --gb-bg: <?php echo htmlspecialchars($opt['bg_color']); ?>;
+  --gb-text: <?php echo htmlspecialchars($opt['text_color']); ?>;
+  --gb-price: <?php echo htmlspecialchars($opt['price_color']); ?>;
+
+  --gb-radius: <?php echo (int)$opt['radius']; ?>px;
+  --gb-btn-radius: <?php echo $btnRadius; ?>;
+
+  --gb-container: <?php echo $container; ?>px;
+  --gb-card-shadow: <?php echo $cardShadow; ?>;
+  --gb-card-border: <?php echo $cardBorder; ?>;
+
+  --gb-card-pad: <?php echo $pad; ?>;
+  --gb-card-gap: <?php echo $gap; ?>;
+
+  --gb-img-ratio: <?php echo $ratioCss; ?>;
+  --gb-img-fit: <?php echo ($opt['card_image_fit'] === 'contain' ? 'contain' : 'cover'); ?>;
+
+  --gb-grid-desktop: <?php echo $gd; ?>;
+  --gb-grid-tablet: <?php echo $gt; ?>;
+  --gb-grid-mobile: <?php echo $gm; ?>;
+}
+
+/* Global typography */
+html, body { font-family: var(--gb-font) !important; font-size: var(--gb-font-size) !important; color: var(--gb-text); background: var(--gb-bg); }
+
+/* Optional container helper (use class="gb-container") */
+.gb-container{ max-width: var(--gb-container); margin: 0 auto; padding: 0 14px; }
+
+/* ===== Product grid + card system (works if you apply classes) ===== */
+/* Grid: put product cards inside .gb-grid */
+.gb-grid{
+  display:grid;
+  grid-template-columns: repeat(var(--gb-grid-desktop), minmax(0, 1fr));
+  gap: var(--gb-card-gap);
+}
+@media(max-width:1024px){
+  .gb-grid{ grid-template-columns: repeat(var(--gb-grid-tablet), minmax(0, 1fr)); }
+}
+@media(max-width:640px){
+  .gb-grid{ grid-template-columns: repeat(var(--gb-grid-mobile), minmax(0, 1fr)); }
+}
+
+/* Card: add class="gb-card" on each product */
+.gb-card{
+  background:#fff;
+  border-radius: var(--gb-radius);
+  border: var(--gb-card-border);
+  box-shadow: var(--gb-card-shadow);
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
+.gb-card .gb-card-img{
+  width:100%;
+  aspect-ratio: var(--gb-img-ratio);
+  background:#fff;
+  overflow:hidden;
+}
+.gb-card .gb-card-img img{
+  width:100%;
+  height:100%;
+  object-fit: var(--gb-img-fit);
+  display:block;
+}
+.gb-card .gb-card-body{
+  padding: var(--gb-card-pad);
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.gb-card .gb-title{
+  font-weight: 800;
+  color: var(--gb-text);
+  text-decoration:none;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.gb-card .gb-price{
+  font-weight: 900;
+  color: var(--gb-price);
+}
+.gb-card .gb-chips{
+  display:flex; flex-wrap:wrap; gap:6px;
+}
+.gb-chip{
+  font-size:11px;
+  padding:3px 8px;
+  border-radius:999px;
+  background:#f3f4f6;
+  color:#555;
+}
+.gb-actions{
+  margin-top:auto;
+  display:flex;
+  gap:8px;
+}
+.gb-btn{
+  border:none;
+  border-radius: var(--gb-btn-radius);
+  padding:10px 12px;
+  font-weight: 900;
+  cursor:pointer;
+  text-decoration:none;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+}
+.gb-btn.primary{ background: var(--gb-primary); color:#fff; }
+.gb-btn.ghost{ background:#fff; border:1px solid rgba(0,0,0,.12); color:#111; }
+.gb-btn.primary:hover{ filter:brightness(.96); }
+.gb-btn.ghost:hover{ border-color:#111; }
+
+/* Toggle elements using options (applies if elements have these classes) */
+<?php if(($opt['show_badges'] ?? '1') !== '1'): ?>
+.gb-badge{ display:none !important; }
+<?php endif; ?>
+<?php if(($opt['show_category_chip'] ?? '1') !== '1'): ?>
+.gb-chip.category{ display:none !important; }
+<?php endif; ?>
+<?php if(($opt['show_unit_chip'] ?? '1') !== '1'): ?>
+.gb-chip.unit{ display:none !important; }
+<?php endif; ?>
+<?php if(($opt['show_quick_add'] ?? '1') !== '1'): ?>
+.gb-btn.quick-add{ display:none !important; }
+<?php endif; ?>
+</style>
