@@ -113,6 +113,75 @@ if (isset($_POST['ajax_clear_cart']) && $_POST['ajax_clear_cart'] === '1') {
     exit('CART_CLEARED');
 }
 
+// AJAX Get Cart For WhatsApp Handler
+if (isset($_POST['action']) && $_POST['action'] === 'get_cart_for_whatsapp') {
+    header('Content-Type: application/json');
+    $result_data = ['items' => [], 'subtotal' => 0, 'delivery_fee' => 0];
+    if (!empty($customer_temp_id) && isset($conn) && is_object($conn)) {
+        try {
+            $stmt_cart = $conn->prepare("SELECT cart_id FROM cart WHERE customer_id = ? LIMIT 1");
+            if ($stmt_cart) {
+                $stmt_cart->bind_param("s", $customer_temp_id);
+                $stmt_cart->execute();
+                $cart_query = $stmt_cart->get_result();
+                if ($cart_query && $cart_query->num_rows > 0) {
+                    $cart_row = $cart_query->fetch_assoc();
+                    $cid = $cart_row['cart_id'];
+                    $stmt_items = $conn->prepare(
+                        "SELECT ci.product_quantity, ci.price AS item_total, p.product_name, p.product_unit,
+                                COALESCE((SELECT price FROM product_price WHERE product_id = ci.product_id LIMIT 1), 0) AS unit_price
+                         FROM cart_item ci
+                         JOIN product p ON ci.product_id = p.product_id
+                         WHERE ci.cart_id = ? AND ci.status = 'ACTIVE'
+                         ORDER BY ci.register_date DESC"
+                    );
+                    if ($stmt_items) {
+                        $stmt_items->bind_param("s", $cid);
+                        $stmt_items->execute();
+                        $items_result = $stmt_items->get_result();
+                        $subtotal = 0;
+                        while ($item_row = $items_result->fetch_assoc()) {
+                            $qty        = floatval($item_row['product_quantity']);
+                            $item_total = floatval($item_row['item_total']);
+                            $unit_price = floatval($item_row['unit_price']);
+                            if ($unit_price <= 0 && $qty >= 0.001) {
+                                $unit_price = $item_total / $qty;
+                            }
+                            $subtotal += $item_total;
+                            $result_data['items'][] = [
+                                'name'       => $item_row['product_name'],
+                                'unit'       => $item_row['product_unit'],
+                                'qty'        => $qty,
+                                'unit_price' => $unit_price,
+                                'total'      => $item_total,
+                            ];
+                        }
+                        $result_data['subtotal'] = $subtotal;
+                        $stmt_items->close();
+                    }
+                }
+                $stmt_cart->close();
+            }
+            $sector = isset($_POST['sector']) ? trim($_POST['sector']) : '';
+            if ($sector !== '') {
+                $stmt_fee = $conn->prepare("SELECT fee FROM sector_shipping_fee WHERE sector = ? LIMIT 1");
+                if ($stmt_fee) {
+                    $stmt_fee->bind_param("s", $sector);
+                    $stmt_fee->execute();
+                    $fee_result = $stmt_fee->get_result();
+                    if ($fee_result && $fee_result->num_rows > 0) {
+                        $fee_row = $fee_result->fetch_assoc();
+                        $result_data['delivery_fee'] = floatval($fee_row['fee']);
+                    }
+                    $stmt_fee->close();
+                }
+            }
+        } catch (Exception $e) {}
+    }
+    echo json_encode($result_data);
+    exit;
+}
+
 // Redirect to standalone dashboard
 if (isset($_GET['dashboard'])) {
     header('Location: dashboard.php');
@@ -2082,7 +2151,7 @@ if (isset($conn) && is_object($conn)) {
         // ==========================================================================
         // SUBMIT WHATSAPP ORDER
         // Message Format:
-        // 1. 2kg Beef Kidney x 9,500 = 19,000 RWF
+        // 1Kilogram(kg) Chicken Wings x 8,500 = 8,500
         // ==========================================================================
         window.submitWaOrder = function(btn) {
             var nameEl = document.getElementById('wa_full_name');
@@ -2120,169 +2189,58 @@ if (isset($conn) && is_object($conn)) {
                 return;
             }
 
-            // Extract cart items
-            var cart = document.getElementById('drawer-cart-items');
-            var items = [];
-            var subtotal = 0;
-
-            if (cart) {
-                var rows = cart.querySelectorAll('[data-product-id], .cart-item, .drawer-cart-item, [class*="cart-row"]');
-                
-                rows.forEach(function(row) {
-                    var itemName = '';
-                    var qty = 1;
-                    var unit = 'pc';
-                    var price = 0;
-                    
-                    // Get name
-                    var nameElement = row.querySelector('[class*="name"], [class*="title"], a, h4, h5');
-                    if (nameElement) {
-                        itemName = nameElement.textContent.trim().split('\n')[0].trim();
-                    }
-                    
-                    // Get quantity
-                    var qtyElement = row.querySelector('input[type="number"], input[type="text"]');
-                    if (qtyElement) {
-                        qty = parseFloat(qtyElement.value) || 1;
-                    }
-                    
-                    // Get unit
-                    var unitElement = row.querySelector('[class*="unit"], .unit, small');
-                    if (unitElement) {
-                        unit = unitElement.textContent.trim().replace(/[\/\s]/g, '').substring(0, 15) || 'pc';
-                    }
-                    
-                    // Get price
-                    var priceElement = row.querySelector('[class*="price"], .price, [data-price]');
-                    if (priceElement) {
-                        if (priceElement.dataset && priceElement.dataset.price) {
-                            price = parseFloat(priceElement.dataset.price) || 0;
-                        } else {
-                            price = parseFloat(priceElement.textContent.replace(/[^0-9.]/g, '')) || 0;
-                        }
-                    }
-                    
-                    // Check data attributes
-                    if (row.dataset) {
-                        if (row.dataset.name && !itemName) itemName = row.dataset.name;
-                        if (row.dataset.qty) qty = parseFloat(row.dataset.qty) || qty;
-                        if (row.dataset.unit) unit = row.dataset.unit;
-                        if (row.dataset.price) price = parseFloat(row.dataset.price) || price;
-                    }
-                    
-                    if (itemName && itemName.length > 1 && !itemName.toLowerCase().includes('empty')) {
-                        var total = qty * price;
-                        subtotal += total;
-                        items.push({
-                            name: itemName,
-                            qty: qty,
-                            unit: unit,
-                            price: price,
-                            total: total
-                        });
-                    }
-                });
-
-                // Fallback: parse text if no items found
-                if (items.length === 0) {
-                    var clone = cart.cloneNode(true);
-                    clone.querySelectorAll('script, style, button, .remove, .delete, i, svg').forEach(function(el) {
-                        el.remove();
-                    });
-                    clone.querySelectorAll('input').forEach(function(inp) {
-                        var txt = document.createTextNode(' [Qty:' + (inp.value || '1') + '] ');
-                        if (inp.parentNode) inp.parentNode.replaceChild(txt, inp);
-                    });
-                    var lines = (clone.innerText || '').split('\n').filter(function(l) {
-                        l = l.trim();
-                        return l && l !== '+' && l !== '-' && l.length > 2 && !l.toLowerCase().includes('empty');
-                    });
-                    if (lines.length > 0) {
-                        items.push({ rawText: lines.join('\n') });
-                    }
-                }
-            }
-
-            // BUILD WHATSAPP MESSAGE
-            var msg = '🛒 *NEW ORDER - GBDELIVERING*\n';
-            msg += '━━━━━━━━━━━━━━━━━━━━\n\n';
-            
-            msg += '📦 *ORDER ITEMS*\n';
-            msg += '─────────────────────\n';
-            
-            if (items.length > 0 && !items[0].rawText) {
-                items.forEach(function(item, index) {
-                    var qtyStr = item.qty % 1 === 0 ? item.qty.toString() : item.qty.toFixed(2);
-                    // Format: 1. 2kg Beef Kidney x 9,500 = 19,000 RWF
-                    msg += (index + 1) + '. ' + qtyStr + item.unit + ' ' + item.name;
-                    if (item.price > 0) {
-                        msg += ' x ' + formatNumber(item.price) + ' = ' + formatNumber(item.total) + ' RWF';
-                    }
-                    msg += '\n';
-                });
-                msg += '─────────────────────\n';
-                msg += '*Subtotal: ' + formatNumber(subtotal) + ' RWF*\n';
-            } else if (items.length > 0 && items[0].rawText) {
-                msg += items[0].rawText + '\n';
-                msg += '─────────────────────\n';
-            } else {
-                msg += '(Please verify cart items)\n';
-                msg += '─────────────────────\n';
-            }
-            
-            msg += '\n';
-            msg += '👤 *CUSTOMER*\n';
-            msg += '• Name: ' + name + '\n';
-            msg += '• Phone: ' + phone + '\n';
-            msg += '\n';
-            
-            msg += '📍 *DELIVERY ADDRESS*\n';
-            msg += '• ' + province + ', ' + district + '\n';
-            msg += '• Sector: ' + sector + '\n';
-            msg += '• Street: ' + street + '\n';
-            
-            if (notes) {
-                msg += '\n📝 *NOTES*\n';
-                msg += notes + '\n';
-            }
-            
-            msg += '\n━━━━━━━━━━━━━━━━━━━━\n';
-            msg += '⏰ ' + new Date().toLocaleString() + '\n';
-            msg += '_Please confirm order & delivery fee!_';
-
-            var waUrl = 'https://wa.me/250788225709?text=' + encodeURIComponent(msg);
-            
             var originalHTML = btn.innerHTML;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
             btn.disabled = true;
 
-            if (typeof $ !== 'undefined') {
+            $.post('index.php', { action: 'get_cart_for_whatsapp', sector: sector }, function(data) {
+                var items = data.items || [];
+                var subtotal = data.subtotal || 0;
+                var deliveryFee = data.delivery_fee || 0;
+                var total = subtotal + deliveryFee;
+
+                // BUILD WHATSAPP MESSAGE
+                var msg = '🛒 NEW ORDER - GERMAN BUTCHERY\n';
+                msg += '━━━━━━━━━━━━━━━━━━━\n';
+
+                items.forEach(function(item) {
+                    var qtyStr = item.qty % 1 === 0 ? item.qty.toString() : item.qty.toFixed(2);
+                    var unitStr = (item.unit && item.unit.trim()) ? item.unit.trim() : 'x';
+                    msg += qtyStr + unitStr + ' ' + item.name + ' x ' + formatNumber(item.unit_price) + ' = ' + formatNumber(item.total) + '\n';
+                });
+
+                msg += '───────────────────────────\n';
+                msg += 'Subtotal: ' + formatNumber(subtotal) + ' RWF\n';
+                msg += 'Delivery Fee: ' + formatNumber(deliveryFee) + ' RWF\n';
+                msg += 'TOTAL: ' + formatNumber(total) + ' RWF\n';
+                msg += '\n';
+                msg += 'Name: ' + name + '\n';
+                msg += 'Phone: ' + phone;
+
+                var waUrl = 'https://wa.me/250788225709?text=' + encodeURIComponent(msg);
+
                 $.post('index.php', { ajax_clear_cart: '1' }, function() {
                     window.open(waUrl, '_blank');
-                    
+
                     document.querySelectorAll('[id^="cart_items_count"]').forEach(function(el) {
                         el.innerText = '0';
                     });
-                    
+
                     var cartItems = document.getElementById('drawer-cart-items');
                     if (cartItems) {
                         cartItems.innerHTML = '<div style="text-align:center; padding:60px 20px;"><i class="fas fa-check-circle fa-4x" style="color:#10b981; margin-bottom:20px;"></i><h3 style="color:#111; font-size:18px; margin:0 0 8px;">Order Sent!</h3><p style="color:#6b7280; font-size:14px;">Check WhatsApp</p></div>';
                     }
-                    
+
                     document.getElementById('drawer-cart-footer').style.display = 'none';
-                    
+
                     btn.innerHTML = originalHTML;
                     btn.disabled = false;
                     closeWaDeliveryDrawer();
-                    gbToast('Order sent!');
                 });
-            } else {
-                window.open(waUrl, '_blank');
+            }, 'json').fail(function() {
                 btn.innerHTML = originalHTML;
                 btn.disabled = false;
-                closeWaDeliveryDrawer();
-                gbToast('Order sent!');
-            }
+            });
         };
 
         // ==========================================================================
