@@ -145,7 +145,7 @@ switch($section) {
         include 'sections/products.php';
         break;
     case 'bulk_editor':
-        include 'sections/admin_bulk_editor.php'; // <--- NEW LINK CONNECTED HERE
+        include 'admin_bulk_editor.php';
         break;
     case 'stock':
         include 'sections/stock.php';
