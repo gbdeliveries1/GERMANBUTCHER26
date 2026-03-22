@@ -128,9 +128,11 @@ $result_cat = $conn->query($sql_cat);
           ══════════════════════════════════════════════════════════════ */
           $sql = "SELECT p.product_id, p.product_name, 
                          COALESCE(NULLIF(p.units, ''), p.product_unit, 'unit') as product_unit,
-                         p.short_description, p.product_rating, pr.price
+                         p.short_description, p.product_rating, pr.price,
+                         ps.stock_quantity
                   FROM product p
                   JOIN product_price pr ON pr.product_id = p.product_id
+                  LEFT JOIN product_stock ps ON ps.product_id = p.product_id
                   $condition
                   ORDER BY $sortby
                   LIMIT $offset, $per_page";
@@ -145,6 +147,8 @@ $result_cat = $conn->query($sql_cat);
                   $product_unit = htmlspecialchars($row['product_unit'] ?: 'unit');
                   $product_rating = isset($row['product_rating']) ? (float)$row['product_rating'] : 0;
                   $price          = (float)$row['price'];
+                  $stock_quantity = isset($row['stock_quantity']) ? (int)$row['stock_quantity'] : null;
+                  $in_stock       = ($stock_quantity === null || $stock_quantity > 0);
 
                   $img_q = $conn->query("SELECT picture FROM product_picture WHERE product_id='$product_id' ORDER BY register_date DESC LIMIT 1");
                   $img   = ($img_q && $img_q->num_rows > 0) ? $img_q->fetch_assoc()['picture'] : 'no-image.png';
@@ -156,10 +160,13 @@ $result_cat = $conn->query($sql_cat);
           ?>
 
           <!-- PRODUCT CARD -->
-          <article class="gb-card" role="listitem">
+          <article class="gb-card<?php echo !$in_stock ? ' gb-card-oos' : ''; ?>" role="listitem">
 
             <!-- Image -->
             <div class="gb-card-img-wrap">
+              <?php if (!$in_stock): ?>
+              <span class="gb-oos-badge" aria-label="Out of Stock">Out of Stock</span>
+              <?php endif; ?>
               <a href="index.php?product-detail&product=<?php echo $product_id; ?>"
                  class="gb-card-img-link"
                  aria-label="<?php echo $product_name; ?>">
@@ -227,6 +234,7 @@ $result_cat = $conn->query($sql_cat);
 
               <!-- Qty + Add to cart -->
               <div class="gb-card-footer">
+                <?php if ($in_stock): ?>
                 <div class="gb-qty-wrap" role="group" aria-label="Quantity">
                   <button type="button"
                           class="gb-qty-btn"
@@ -258,6 +266,15 @@ $result_cat = $conn->query($sql_cat);
                   <i class="fas fa-cart-plus" aria-hidden="true"></i>
                   <span class="gb-btn-text">Add</span>
                 </button>
+                <?php else: ?>
+                <button type="button"
+                        class="gb-cart-btn gb-cart-btn-oos"
+                        disabled
+                        aria-label="<?php echo $product_name; ?> is out of stock">
+                  <i class="fas fa-ban" aria-hidden="true"></i>
+                  <span class="gb-btn-text">Out of Stock</span>
+                </button>
+                <?php endif; ?>
               </div>
 
             </div><!-- /gb-card-body -->
@@ -962,6 +979,31 @@ img { display: block; max-width: 100%; }
 }
 .gb-cart-btn:hover  { background: var(--gb-orange-d); transform: translateY(-1px); }
 .gb-cart-btn:active { background: var(--gb-orange-d); transform: translateY(0); }
+
+/* Out of stock styles */
+.gb-oos-badge {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(229,57,53,.9);
+    color: #fff;
+    font-size: .7rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    z-index: 5;
+    pointer-events: none;
+}
+.gb-card-oos .gb-card-img { opacity: .65; filter: grayscale(20%); }
+.gb-cart-btn-oos {
+    background: #9ca3af;
+    cursor: not-allowed;
+    width: 100%;
+}
+.gb-cart-btn-oos:hover  { background: #9ca3af; transform: none; }
+.gb-cart-btn-oos:active { background: #9ca3af; transform: none; }
 
 /* Qty error */
 .gb-qty-error { border-color: var(--gb-warn) !important; animation: gbShake .4s; }
