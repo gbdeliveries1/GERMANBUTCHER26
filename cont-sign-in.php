@@ -87,6 +87,7 @@
                                         	$product_minimum_order =$row53['product_minimum_order'];
                                             $register_date =$row53['register_date'];
 
+                                            $product_quantity = 0;
                                             $sql="SELECT * from product_stock where product_id='$product_id'";
                                             $result=$conn->query($sql);
                                             while ($row = $result->fetch_assoc()) {
@@ -137,8 +138,12 @@
 
                                                                 <a href="#quick-look" data-toggle="modal" data-modal="modal" data-product-id="<?php echo $product_id; ?>" data-tooltip="tooltip" data-placement="top" title="Quick View"><i class="fas fa-search-plus"></i></a></li>
                                                             <li>
-
-                                                                <a onclick="add_to_cart('<?php echo $product_id; ?>','<?php echo $customer_id_1; ?>','<?php echo $product_price; ?>','<?php echo $product_minimum_order; ?>')" data-tooltip="tooltip" data-placement="top" title="Add to Cart [<?php echo $product_minimum_order; ?> <?php echo $product_unit; ?>] "><i class="fas fa-plus-circle"></i></a></li>
+                                                                <?php if($product_quantity > 0): ?>
+                                                                <a onclick="add_to_cart('<?php echo $product_id; ?>','<?php echo $customer_id_1; ?>','<?php echo $product_price; ?>','<?php echo $product_minimum_order; ?>')" data-tooltip="tooltip" data-placement="top" title="Add to Cart [<?php echo $product_minimum_order; ?> <?php echo $product_unit; ?>] "><i class="fas fa-plus-circle"></i></a>
+                                                                <?php else: ?>
+                                                                <a style="opacity:.4;cursor:not-allowed;pointer-events:none;" data-tooltip="tooltip" data-placement="top" title="Out of Stock"><i class="fas fa-ban"></i></a>
+                                                                <?php endif; ?>
+                                                            </li>
                                                         
                                                         	<?php if($login_status){ ?>
                                 
@@ -250,6 +255,7 @@
                                         	$product_minimum_order =$row53['product_minimum_order'];
                                             $register_date =$row53['register_date'];
 
+                                            $product_quantity = 0;
                                             $sql="SELECT * from product_stock where product_id='$product_id'";
                                             $result=$conn->query($sql);
                                             while ($row = $result->fetch_assoc()) {
@@ -299,8 +305,12 @@
 
                                                                 <a href="#quick-look" data-toggle="modal" data-modal="modal" data-product-id="<?php echo $product_id; ?>" data-tooltip="tooltip" data-placement="top" title="Quick View"><i class="fas fa-search-plus"></i></a></li>
                                                             <li>
-
-                                                                <a onclick="add_to_cart('<?php echo $product_id; ?>','<?php echo $customer_id_1; ?>','<?php echo $product_price; ?>','<?php echo $product_minimum_order; ?>')" data-tooltip="tooltip" data-placement="top" title="Add to Cart [<?php echo $product_minimum_order; ?> <?php echo $product_unit; ?>] "><i class="fas fa-plus-circle"></i></a></li>
+                                                                <?php if($product_quantity > 0): ?>
+                                                                <a onclick="add_to_cart('<?php echo $product_id; ?>','<?php echo $customer_id_1; ?>','<?php echo $product_price; ?>','<?php echo $product_minimum_order; ?>')" data-tooltip="tooltip" data-placement="top" title="Add to Cart [<?php echo $product_minimum_order; ?> <?php echo $product_unit; ?>] "><i class="fas fa-plus-circle"></i></a>
+                                                                <?php else: ?>
+                                                                <a style="opacity:.4;cursor:not-allowed;pointer-events:none;" data-tooltip="tooltip" data-placement="top" title="Out of Stock"><i class="fas fa-ban"></i></a>
+                                                                <?php endif; ?>
+                                                            </li>
                                                         
                                                         	<?php if($login_status){ ?>
                                 

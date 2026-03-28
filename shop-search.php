@@ -83,9 +83,11 @@ if ($cat_result) {
 $products_query = "SELECT DISTINCT p.product_id, p.product_name, 
                           COALESCE(NULLIF(p.units, ''), p.product_unit, 'unit') as product_unit,
                           p.short_description, p.minimum_order,
-                          p.product_rating, pr.price, pc.category_name, psc.sub_category_name 
+                          p.product_rating, pr.price, pc.category_name, psc.sub_category_name,
+                          COALESCE(ps.stock_quantity, 0) as stock_quantity
                    FROM product p 
                    INNER JOIN product_price pr ON pr.product_id = p.product_id 
+                   LEFT JOIN product_stock ps ON ps.product_id = p.product_id
                    LEFT JOIN product_category pc ON pc.category_id = p.category_id 
                    LEFT JOIN product_sub_category psc ON psc.sub_category_id = p.sub_category_id 
                    WHERE p.product_name LIKE '%$search_escaped%' 
@@ -214,7 +216,12 @@ function ssShowToast(msg, type) {
 }
 
 // --- Add to Cart ---
-function ssAddToCart(productId, custId, price, uid, evt) {
+function ssAddToCart(productId, custId, price, uid, evt, stock) {
+    if (stock !== undefined && stock <= 0) {
+        ssShowToast('Sorry, this product is out of stock', 'error');
+        return;
+    }
+
     var input = document.getElementById('qty_' + uid);
     if (!input) {
         ssShowToast('Error: Input not found', 'error');
@@ -719,6 +726,37 @@ document.addEventListener('DOMContentLoaded', function() {
     transition: 0.2s;
 }
 .ss-product-card .ss-add-btn:hover { background: var(--ss-primary-hover); }
+.ss-product-card .ss-add-btn:disabled { opacity: .5; cursor: not-allowed; background: #9ca3af !important; }
+
+/* Out of Stock */
+.ss-oos-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    background: #ef4444;
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    z-index: 5;
+    pointer-events: none;
+}
+.ss-product-card.out-of-stock .ss-img-wrap::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,.5);
+    z-index: 2;
+    pointer-events: none;
+}
+.ss-qty-row input:disabled,
+.ss-qty-row button:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+    background: #f3f4f6;
+}
 
 /* ===== NO RESULTS ===== */
 .ss-no-results {
@@ -957,6 +995,8 @@ document.addEventListener('DOMContentLoaded', function() {
                             $prating = floatval($prod['product_rating'] ?: 0);
                             $pcat = htmlspecialchars($prod['sub_category_name'] ?: $prod['category_name'] ?: '');
                             $pmin = isset($prod['minimum_order']) ? max(1, (float)$prod['minimum_order']) : 1;
+                            $pstock = (float)($prod['stock_quantity'] ?? 0);
+                            $pInStock = ($pstock > 0);
 
                             $img_q = mysqli_query($conn, "SELECT picture FROM product_picture WHERE product_id='$pid' ORDER BY register_date DESC LIMIT 1");
                             $pimg = ($img_q && $img_row = mysqli_fetch_assoc($img_q)) ? $img_row['picture'] : 'no-image.png';
@@ -967,8 +1007,11 @@ document.addEventListener('DOMContentLoaded', function() {
                             
                             $uid = 'ss_' . $pid . '_' . $idx;
                         ?>
-                        <div class="ss-product-card">
+                        <div class="ss-product-card<?php echo !$pInStock ? ' out-of-stock' : ''; ?>">
                             <div class="ss-img-wrap">
+                                <?php if (!$pInStock): ?>
+                                <span class="ss-oos-badge">Out of Stock</span>
+                                <?php endif; ?>
                                 <a href="index.php?product-detail&product=<?php echo $pid; ?>">
                                     <img src="uploads/<?php echo $pimg; ?>" alt="<?php echo $pname; ?>" loading="lazy" onerror="this.src='assets/images/no-image.png'">
                                 </a>
@@ -1002,13 +1045,13 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </div>
                                 
                                 <div class="ss-qty-row">
-                                    <button type="button" onclick="ssDecQty('<?php echo $uid; ?>')"><i class="fas fa-minus"></i></button>
-                                    <input type="text" id="qty_<?php echo $uid; ?>" value="<?php echo $pmin; ?>" inputmode="decimal" oninput="ssValidateQty(this)" onblur="ssBlurQty(this, <?php echo $pmin; ?>)">
-                                    <button type="button" onclick="ssIncQty('<?php echo $uid; ?>')"><i class="fas fa-plus"></i></button>
+                                    <button type="button" onclick="ssDecQty('<?php echo $uid; ?>')" <?php echo !$pInStock ? 'disabled' : ''; ?>><i class="fas fa-minus"></i></button>
+                                    <input type="text" id="qty_<?php echo $uid; ?>" value="<?php echo $pmin; ?>" inputmode="decimal" oninput="ssValidateQty(this)" onblur="ssBlurQty(this, <?php echo $pmin; ?>)" <?php echo !$pInStock ? 'disabled' : ''; ?>>
+                                    <button type="button" onclick="ssIncQty('<?php echo $uid; ?>')" <?php echo !$pInStock ? 'disabled' : ''; ?>><i class="fas fa-plus"></i></button>
                                 </div>
                                 
-                                <button class="ss-add-btn" onclick="ssAddToCart('<?php echo $pid; ?>','<?php echo $customer_id; ?>','<?php echo $pprice; ?>','<?php echo $uid; ?>', event)">
-                                    <i class="fas fa-cart-plus"></i> Add
+                                <button class="ss-add-btn" onclick="ssAddToCart('<?php echo $pid; ?>','<?php echo $customer_id; ?>','<?php echo $pprice; ?>','<?php echo $uid; ?>', event, <?php echo $pstock; ?>)" <?php echo !$pInStock ? 'disabled' : ''; ?>>
+                                    <i class="fas <?php echo $pInStock ? 'fa-cart-plus' : 'fa-ban'; ?>"></i> <?php echo $pInStock ? 'Add' : 'Out of Stock'; ?>
                                 </button>
                             </div>
                         </div>

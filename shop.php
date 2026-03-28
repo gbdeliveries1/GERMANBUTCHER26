@@ -128,9 +128,11 @@ $result_cat = $conn->query($sql_cat);
           ══════════════════════════════════════════════════════════════ */
           $sql = "SELECT p.product_id, p.product_name, 
                          COALESCE(NULLIF(p.units, ''), p.product_unit, 'unit') as product_unit,
-                         p.short_description, p.product_rating, pr.price
+                         p.short_description, p.product_rating, pr.price,
+                         COALESCE(ps.stock_quantity, 0) as stock_quantity
                   FROM product p
                   JOIN product_price pr ON pr.product_id = p.product_id
+                  LEFT JOIN product_stock ps ON ps.product_id = p.product_id
                   $condition
                   ORDER BY $sortby
                   LIMIT $offset, $per_page";
@@ -145,6 +147,8 @@ $result_cat = $conn->query($sql_cat);
                   $product_unit = htmlspecialchars($row['product_unit'] ?: 'unit');
                   $product_rating = isset($row['product_rating']) ? (float)$row['product_rating'] : 0;
                   $price          = (float)$row['price'];
+                  $stock_quantity = (float)$row['stock_quantity'];
+                  $is_in_stock    = ($stock_quantity > 0);
 
                   $img_q = $conn->query("SELECT picture FROM product_picture WHERE product_id='$product_id' ORDER BY register_date DESC LIMIT 1");
                   $img   = ($img_q && $img_q->num_rows > 0) ? $img_q->fetch_assoc()['picture'] : 'no-image.png';
@@ -156,10 +160,13 @@ $result_cat = $conn->query($sql_cat);
           ?>
 
           <!-- PRODUCT CARD -->
-          <article class="gb-card" role="listitem">
+          <article class="gb-card<?php echo !$is_in_stock ? ' out-of-stock' : ''; ?>" role="listitem">
 
             <!-- Image -->
             <div class="gb-card-img-wrap">
+              <?php if (!$is_in_stock): ?>
+              <span class="gb-oos-badge">Out of Stock</span>
+              <?php endif; ?>
               <a href="index.php?product-detail&product=<?php echo $product_id; ?>"
                  class="gb-card-img-link"
                  aria-label="<?php echo $product_name; ?>">
@@ -231,7 +238,8 @@ $result_cat = $conn->query($sql_cat);
                   <button type="button"
                           class="gb-qty-btn"
                           onclick="gbDecQty('<?php echo $uid; ?>')"
-                          aria-label="Decrease quantity">
+                          aria-label="Decrease quantity"
+                          <?php echo !$is_in_stock ? 'disabled' : ''; ?>>
                     <i class="fas fa-minus" aria-hidden="true"></i>
                   </button>
                   <input type="text"
@@ -242,21 +250,24 @@ $result_cat = $conn->query($sql_cat);
                          inputmode="decimal"
                          aria-label="Quantity for <?php echo $product_name; ?>"
                          oninput="gbValidateQty(this)"
-                         onblur="gbBlurQty(this)">
+                         onblur="gbBlurQty(this)"
+                         <?php echo !$is_in_stock ? 'disabled' : ''; ?>>
                   <button type="button"
                           class="gb-qty-btn"
                           onclick="gbIncQty('<?php echo $uid; ?>')"
-                          aria-label="Increase quantity">
+                          aria-label="Increase quantity"
+                          <?php echo !$is_in_stock ? 'disabled' : ''; ?>>
                     <i class="fas fa-plus" aria-hidden="true"></i>
                   </button>
                 </div>
 
                 <button type="button"
                         class="gb-cart-btn"
-                        onclick="gbAddToCart('<?php echo $product_id; ?>','<?php echo $customer_id; ?>','<?php echo $price; ?>','<?php echo $uid; ?>',event)"
-                        aria-label="Add <?php echo $product_name; ?> to cart">
-                  <i class="fas fa-cart-plus" aria-hidden="true"></i>
-                  <span class="gb-btn-text">Add</span>
+                        onclick="gbAddToCart('<?php echo $product_id; ?>','<?php echo $customer_id; ?>','<?php echo $price; ?>','<?php echo $uid; ?>',event,<?php echo $stock_quantity; ?>)"
+                        aria-label="<?php echo $is_in_stock ? 'Add '.$product_name.' to cart' : $product_name.' is out of stock'; ?>"
+                        <?php echo !$is_in_stock ? 'disabled' : ''; ?>>
+                  <i class="fas <?php echo $is_in_stock ? 'fa-cart-plus' : 'fa-ban'; ?>" aria-hidden="true"></i>
+                  <span class="gb-btn-text"><?php echo $is_in_stock ? 'Add' : 'Out of Stock'; ?></span>
                 </button>
               </div>
 
@@ -428,7 +439,12 @@ function gbBlurQty(input) {
 }
 
 /* ── Add to cart ── */
-function gbAddToCart(productId, customerId, price, uid, evt) {
+function gbAddToCart(productId, customerId, price, uid, evt, stock) {
+    if (stock !== undefined && stock <= 0) {
+        gbNotify('Sorry, this product is out of stock', 'error');
+        return;
+    }
+
     var input = document.getElementById('qty_' + uid);
     var qStr  = input.value.trim();
 
@@ -962,6 +978,37 @@ img { display: block; max-width: 100%; }
 }
 .gb-cart-btn:hover  { background: var(--gb-orange-d); transform: translateY(-1px); }
 .gb-cart-btn:active { background: var(--gb-orange-d); transform: translateY(0); }
+.gb-cart-btn:disabled { opacity: .5; cursor: not-allowed; background: #9ca3af !important; transform: none !important; }
+
+/* Out of Stock */
+.gb-oos-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    background: #ef4444;
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    z-index: 5;
+    pointer-events: none;
+}
+.gb-card.out-of-stock .gb-card-img-wrap::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,.5);
+    z-index: 2;
+    pointer-events: none;
+}
+.gb-qty-input:disabled,
+.gb-qty-btn:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+    background: #f3f4f6;
+}
 
 /* Qty error */
 .gb-qty-error { border-color: var(--gb-warn) !important; animation: gbShake .4s; }
