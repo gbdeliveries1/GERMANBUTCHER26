@@ -193,6 +193,10 @@ $shipping_outside = 2000;
 .pd-buy:hover { transform: translateY(-3px); box-shadow: 0 8px 16px rgba(255,80,0,0.3); }
 .pd-cart { background: var(--pd-surface); color: var(--pd-dark); border: 2px solid var(--pd-dark); }
 .pd-cart:hover { background: var(--pd-dark); color: #fff; transform: translateY(-3px); }
+.pd-btn-disabled { opacity: 0.5; cursor: not-allowed; background: #9ca3af; color: #fff; border-color: #9ca3af; }
+.pd-btn-disabled:hover { transform: none; box-shadow: none; background: #9ca3af; }
+.pd-qtyb-disabled { opacity: 0.5; }
+.pd-qtyi-oos { color: var(--pd-red); background: #fee2e2; }
 
 .pd-wa { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 16px; background: var(--pd-whatsapp); border-radius: 26px; color: #fff; text-decoration: none; font-size: 16px; font-weight: 700; transition: 0.3s; box-shadow: 0 4px 12px rgba(37,211,102,0.2); }
 .pd-wa:hover { background: #1da855; transform: translateY(-3px); box-shadow: 0 8px 16px rgba(37,211,102,0.3); }
@@ -379,18 +383,32 @@ $shipping_outside = 2000;
 
             <div class="pd-qty">
                 <span class="pd-qtyl">Quantity:</span>
+                <?php if ($stock_quantity > 0): ?>
                 <div class="pd-qtyb">
                     <button type="button" onclick="chgQty(-1)" aria-label="Decrease"><i class="fas fa-minus" style="font-size: 14px;"></i></button>
                     <!-- step="any" allows decimal input natively -->
-                    <input type="number" id="pdQty" value="<?php echo $product_minimum_order; ?>" step="any" min="<?php echo $product_minimum_order; ?>" aria-label="Quantity">
+                    <input type="number" id="pdQty" value="<?php echo $product_minimum_order; ?>" step="any" min="<?php echo $product_minimum_order; ?>" max="<?php echo $stock_quantity; ?>" aria-label="Quantity">
                     <button type="button" onclick="chgQty(1)" aria-label="Increase"><i class="fas fa-plus" style="font-size: 14px;"></i></button>
                 </div>
                 <span class="pd-qtyi"><?php echo $stock_quantity; ?> Total Available</span>
+                <?php else: ?>
+                <div class="pd-qtyb pd-qtyb-disabled">
+                    <button type="button" disabled><i class="fas fa-minus" style="font-size: 14px;"></i></button>
+                    <input type="number" id="pdQty" value="0" disabled aria-label="Quantity">
+                    <button type="button" disabled><i class="fas fa-plus" style="font-size: 14px;"></i></button>
+                </div>
+                <span class="pd-qtyi pd-qtyi-oos">0 Available</span>
+                <?php endif; ?>
             </div>
 
             <div class="pd-btns">
+                <?php if ($stock_quantity > 0): ?>
                 <button type="button" class="pd-btn pd-buy" onclick="buyNow()"><i class="fas fa-bolt"></i> Buy Now</button>
                 <button type="button" class="pd-btn pd-cart" onclick="addToCartNow()"><i class="fas fa-cart-plus"></i> Add to Cart</button>
+                <?php else: ?>
+                <button type="button" class="pd-btn pd-buy pd-btn-disabled" disabled><i class="fas fa-bolt"></i> Out of Stock</button>
+                <button type="button" class="pd-btn pd-cart pd-btn-disabled" disabled><i class="fas fa-times-circle"></i> Unavailable</button>
+                <?php endif; ?>
             </div>
 
             <a href="https://wa.me/250783654454?text=<?php echo urlencode('Hi! I want: '.$product_name.' - RWF '.number_format($product_price,0)); ?>" target="_blank" class="pd-wa">
@@ -481,8 +499,13 @@ $shipping_outside = 2000;
 <!-- Mobile Sticky Bottom Action Bar -->
 <div class="pd-mob">
     <a href="https://wa.me/250783654454?text=<?php echo urlencode('Order: '.$product_name); ?>" class="pd-mwa" aria-label="Order on WhatsApp"><i class="fab fa-whatsapp"></i></a>
+    <?php if ($stock_quantity > 0): ?>
     <button type="button" class="pd-mcart" onclick="addToCartNow()"><i class="fas fa-cart-plus"></i> Add to Cart</button>
     <button type="button" class="pd-mbuy" onclick="buyNow()"><i class="fas fa-bolt"></i> Buy Now</button>
+    <?php else: ?>
+    <button type="button" class="pd-mcart pd-btn-disabled" disabled><i class="fas fa-times-circle"></i> Out of Stock</button>
+    <button type="button" class="pd-mbuy pd-btn-disabled" disabled><i class="fas fa-ban"></i> Unavailable</button>
+    <?php endif; ?>
 </div>
 
 <!-- Scripts (Preserved perfectly) -->
@@ -537,7 +560,25 @@ function chgQty(delta) {
 }
 
 // Add to cart bridge calling main.js
+function isInStock() {
+    if (pdProduct.maxQty <= 0) {
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                icon: 'error',
+                title: 'Out of Stock',
+                text: 'Sorry, this product is currently out of stock.',
+                confirmButtonColor: '#ff5000'
+            });
+        } else {
+            alert('Sorry, this product is currently out of stock.');
+        }
+        return false;
+    }
+    return true;
+}
+
 function addToCartNow() {
+    if (!isInStock()) return;
     var qty = getPdQty();
     if (typeof add_to_cart === 'function') {
         add_to_cart(pdProduct.id, pdProduct.customerId, pdProduct.price, qty);
@@ -569,6 +610,7 @@ function addToCartNow() {
 
 // Buy Now redirect wrapper
 function buyNow() {
+    if (!isInStock()) return;
     var qty = getPdQty();
     if (typeof add_to_cart === 'function') {
         add_to_cart(pdProduct.id, pdProduct.customerId, pdProduct.price, qty);
